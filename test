@@ -1,0 +1,197 @@
+local Functions = require(game.ServerScriptService.ServerScripts.Functions)
+
+local DataStoreService = game:GetService("DataStoreService")
+local DataStore = DataStoreService:GetDataStore("FlTPdSQ9yx")
+
+local GameData = DataStoreService:GetDataStore("Cars")
+local PlayerCash = DataStoreService:GetDataStore("Money")
+
+local Calc = require(game.ServerScriptService.ServerScripts.CalcFunctions)
+
+local AllowedLetters = {"А", "В", "Е", "К", "М", "Н", "О", "Р", "С", "Т", "У", "Х"}
+local ReplaceLetters = {"A", "B", "E", "K", "M", "H", "O", "P", "C", "T", "Y", "X"}
+
+local DataTemplate = {
+	Cars = {},
+	R = 50000,
+	FractionData = {
+		Name = "Citizen",
+		Role = nil
+	}
+}
+
+local FractionTemplate = {
+	Name = "Citizen",
+	Role = nil
+}
+
+local function initplr(plr)
+	local CarsFolder = Instance.new("Folder",plr)
+	CarsFolder.Name = "Cars"
+
+	local lead = Instance.new("Folder",plr)
+	lead.Name = "leaderstats"
+
+	local RUB = Instance.new("NumberValue",lead)
+	RUB.Name = "Cash"
+
+	local NowCar = Instance.new("ObjectValue",plr)
+	NowCar.Name = "NowCar"
+
+	local DataLoaded = Instance.new("BoolValue", plr)
+	DataLoaded.Name = "DataLoaded"
+	DataLoaded.Value = false
+	
+	local Fraction = Instance.new("StringValue", plr)
+	Fraction.Name = "Fraction"
+	
+	return CarsFolder,RUB,DataLoaded,Fraction
+end
+ 
+game.Players.PlayerAdded:Connect(function(plr)
+	local Data = DataStore:GetAsync("Data"..plr.UserId)
+	
+	if Data == nil then
+		Data = DataTemplate
+		DataTemplate.Cars = GameData:GetAsync(plr.UserId)
+		DataTemplate.Money = PlayerCash:GetAsync(plr.UserId)
+		if DataTemplate.Money == nil then
+			DataTemplate.Money = 500000000000
+		end
+		if DataTemplate.Cars == nil then
+			DataTemplate.Cars = {}
+		end
+	end
+	
+	local CarsFolder,RUB,DataLoaded,Fraction = initplr(plr)
+	
+	if plr:IsDescendantOf(game.Players) then
+		if Data["FractionData"] == nil then
+			Data["FractionData"] = FractionTemplate
+		end
+
+		Fraction.Value = Data["FractionData"].Name
+		Fraction:SetAttribute("Role",Data["FractionData"].Role)
+		RUB.Value = Data["Money"]
+		for i,car in pairs(Data["Cars"]) do
+			if car[1] == "Mercedes-Benz E63s AMG 4MATIC" then
+				car[1] = "Mercedes-Benz E63s AMG (W213)"
+			elseif car[1] == "Lada  Granta FL" then
+				car[1] = "Lada Granta FL"
+			end
+
+			local newCar = Instance.new("BoolValue")
+			newCar.Name = car[1]	
+			newCar:SetAttribute("Color",car[3])
+			newCar:SetAttribute("Tuning",car[4])
+			newCar:SetAttribute("Reflectance",car[5])
+			if car[2] == nil or car[2] == "" then
+				newCar:SetAttribute("Plates",Functions.genPlates())
+			else
+				local plates = ""
+				local splitted = Calc.split(car[2])
+				for i,v in pairs(splitted) do
+					local pos = table.find(AllowedLetters,v)
+					if pos ~= nil then
+						plates = plates..""..ReplaceLetters[pos]
+					else
+						plates = plates..""..v
+					end
+				end
+				newCar:SetAttribute("Plates",plates)
+			end
+			if car[6] == nil then
+				car[6] = 1
+			end
+			newCar:SetAttribute("Owners",car[6])
+			newCar.Parent = CarsFolder
+		end	
+	end
+	DataLoaded.Value = true
+end)
+
+local GlobalSaving = false
+
+game.Players.PlayerRemoving:Connect(function(plr)
+	if plr:FindFirstChild("DataLoaded") and plr.DataLoaded.Value == true and plr:IsDescendantOf(game.Players) and GlobalSaving == false then
+		
+		if game.Workspace.Cars:FindFirstChild(plr.Name.."sCar") then
+			game.Workspace.Cars[plr.Name.."sCar"]:Destroy()
+		end
+
+		if game.Workspace.Rented.Trucker:FindFirstChild(plr.Name.."sCar") then
+			game.Workspace.Rented.Trucker[plr.Name.."sCar"]:Destroy()
+		end
+		
+		local Data = DataTemplate
+		
+		local CarsFolder = plr:FindFirstChild("Cars")
+		local CarsToSave = {}
+		if CarsFolder then
+			for i,v in pairs(CarsFolder:GetChildren()) do
+				local carTable = {}
+				carTable[1] = v.Name
+				carTable[2] = v:GetAttribute("Plates")
+				carTable[3] = v:GetAttribute("Color")
+				carTable[4] = v:GetAttribute("Tuning")
+				carTable[5] = v:GetAttribute("Reflectance")
+				carTable[6] = v:GetAttribute("Owners")
+				table.insert(CarsToSave,carTable)
+			end
+		end
+		local MoneyToSave = plr.leaderstats.Cash.Value
+		
+
+		Data["Cars"] = CarsToSave
+		Data["Money"] = MoneyToSave
+		Data["FractionData"].Name = plr.Fraction.Value
+		Data["FractionData"].Role = plr.Fraction:GetAttribute("Role")
+		
+		DataStore:SetAsync("Data"..plr.UserId,Data)
+	end
+end)
+
+game:BindToClose(function()
+	
+	GlobalSaving = true
+	local Players = game.Players:GetPlayers()
+	
+	for i,plr in pairs(Players) do
+		if game.Workspace.Cars:FindFirstChild(plr.Name.."sCar") then
+			game.Workspace.Cars[plr.Name.."sCar"]:Destroy()
+		end
+		
+		if game.Workspace.Rented.Trucker:FindFirstChild(plr.Name.."sCar") then
+			game.Workspace.Rented.Trucker[plr.Name.."sCar"]:Destroy()
+		end
+		
+		if plr:FindFirstChild("DataLoaded") and plr.DataLoaded.Value == true and plr:IsDescendantOf(game.Players) then
+			local Data = DataTemplate
+
+			local CarsFolder = plr:FindFirstChild("Cars")
+			local CarsToSave = {}
+			if CarsFolder then
+				for i,v in pairs(CarsFolder:GetChildren()) do
+					local carTable = {}
+					carTable[1] = v.Name
+					carTable[2] = v:GetAttribute("Plates")
+					carTable[3] = v:GetAttribute("Color")
+					carTable[4] = v:GetAttribute("Tuning")
+					carTable[5] = v:GetAttribute("Reflectance")
+					carTable[6] = v:GetAttribute("Owners")
+					table.insert(CarsToSave,carTable)
+				end
+			end
+			local MoneyToSave = plr.leaderstats.Cash.Value
+
+			Data["Cars"] = CarsToSave
+			Data["Money"] = MoneyToSave
+			Data["FractionData"].Name = plr.Fraction.Value
+			Data["FractionData"].Role = plr.Fraction:GetAttribute("Role")
+
+			DataStore:SetAsync("Data"..plr.UserId,Data)
+		end
+	end
+end)
+
+
